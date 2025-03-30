@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      # Step 2: Configure AWS credentials and assume IAM role
+      # Step 2: Configure AWS credentials and  assume IAM role
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
