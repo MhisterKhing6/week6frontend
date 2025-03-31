@@ -61,7 +61,7 @@ jobs:
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" > image.txt
     
     - name: Save image tag
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v2
       with:
         name: image-tag
         path: image.txt
@@ -72,7 +72,7 @@ jobs:
     needs: build-and-push
     steps:
     - name: Download image tag
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v2
       with:
         name: image-tag
     
@@ -120,7 +120,7 @@ jobs:
         echo "task_definition_arn=$TASK_DEFINITION_ARN" > task-definition-arn.txt
     
     - name: Save task definition ARN
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v2
       with:
         name: task-definition-arn
         path: task-definition-arn.txt
@@ -131,7 +131,7 @@ jobs:
     needs: register-task-definition
     steps:
     - name: Download task definition ARN
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v2
       with:
         name: task-definition-arn
     
