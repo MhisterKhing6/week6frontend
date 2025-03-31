@@ -128,7 +128,7 @@ jobs:
       run: |
         TASK_DEFINITION_ARN=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
         echo "TASK_DEFINITION_ARN=$TASK_DEFINITION_ARN" >> $GITHUB_ENV
-        echo "TASK_DEFINITION_ARN=$TASK_DEFINITION_ARN" > task-definition-arn.txt
+        echo "$TASK_DEFINITION_ARN" > task-definition-arn.txt
     
     - name: Save task definition ARN
       uses: actions/upload-artifact@v4
@@ -181,17 +181,23 @@ jobs:
         EOF
         cat appspec.json
     
-    - name: Install jq
-      run: sudo apt-get install -y jq
-    
     - name: Trigger CodeDeploy deployment
       run: |
-        APPSPEC_CONTENT=$(cat appspec.json | jq -c .)
-        aws deploy create-deployment \
+        # Convert the JSON file to a string with escaped quotes for AWS CLI
+        APPSPEC_CONTENT=$(cat appspec.json | tr -d '\n' | tr -d '\t' | sed 's/"/\\"/g')
+        
+        # Create the deployment
+        DEPLOYMENT_ID=$(aws deploy create-deployment \
           --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
           --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
           --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
           --description "Deployment triggered by GitHub Actions" \
-          --revision "{\"revisionType\":\"AppSpecContent\",\"appSpecContent\":{\"content\":$APPSPEC_CONTENT}}" \
-          --output json
+          --revision "{\"revisionType\":\"AppSpecContent\",\"appSpecContent\":{\"content\":\"$APPSPEC_CONTENT\"}}" \
+          --query 'deploymentId' --output text)
+        
+        echo "Deployment ID: $DEPLOYMENT_ID"
+        echo "DEPLOYMENT_ID=$DEPLOYMENT_ID" >> $GITHUB_ENV
+        
+        # Wait for a moment and then get deployment status
+        sleep 5
         aws deploy get-deployment --deployment-id $DEPLOYMENT_ID
