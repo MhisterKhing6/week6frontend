@@ -82,7 +82,7 @@ jobs:
     - name: Echo image 
       run: echo "Image used $IMAGE"
 
-    - name: Configure AWS credentials
+    - name: Configure AWS credentials for us-east-1
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -117,10 +117,18 @@ jobs:
         }
         EOF
     
+    - name: Switch AWS credentials to eu-west-1 for task definition registration
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-west-1
+    
     - name: Register new task definition
       run: |
         TASK_DEFINITION_ARN=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
-        echo "task_definition_arn=$TASK_DEFINITION_ARN" > task-definition-arn.txt
+        echo "TASK_DEFINITION_ARN=$TASK_DEFINITION_ARN" >> $GITHUB_ENV
+        echo "TASK_DEFINITION_ARN=$TASK_DEFINITION_ARN" > task-definition-arn.txt
     
     - name: Save task definition ARN
       uses: actions/upload-artifact@v4
@@ -139,20 +147,22 @@ jobs:
         name: task-definition-arn
     
     - name: Read task definition ARN
-      run: echo "TASK_DEFINITION_ARN=$(cat task-definition-arn.txt)" >> $GITHUB_ENV
+      run: |
+        cat task-definition-arn.txt
+        echo "TASK_DEFINITION_ARN=$(cat task-definition-arn.txt)" >> $GITHUB_ENV
     
-    - name: Configure AWS credentials
+    - name: Configure AWS credentials for eu-west-1
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+        aws-region: eu-west-1
     
     - name: Generate appspec.json
       run: |
         cat <<EOF > appspec.json
         {
-          "version": 0.0,
+          "version": "0.0",
           "Resources": [
             {
               "TargetService": {
@@ -169,21 +179,19 @@ jobs:
           ]
         }
         EOF
+        cat appspec.json
     
     - name: Install jq
       run: sudo apt-get install -y jq
     
     - name: Trigger CodeDeploy deployment
       run: |
-        APPSPEC_CONTENT=$(cat appspec.json | jq -c -r @json)
-        ESCAPED_APPSPEC_CONTENT=$(echo $APPSPEC_CONTENT | sed 's/"/\\"/g')
-        DEPLOYMENT_ID=$(aws deploy create-deployment \
+        APPSPEC_CONTENT=$(cat appspec.json | jq -c .)
+        aws deploy create-deployment \
           --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
           --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
           --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
           --description "Deployment triggered by GitHub Actions" \
-          --region eu-west-1 \
-          --revision "{\"revisionType\":\"AppSpecContent\",\"appSpecContent\":{\"content\":\"$ESCAPED_APPSPEC_CONTENT\"}}" \
-          --query 'deploymentId' --output text)
-        echo "Deployment ID: $DEPLOYMENT_ID"
+          --revision "{\"revisionType\":\"AppSpecContent\",\"appSpecContent\":{\"content\":$APPSPEC_CONTENT}}" \
+          --output json
         aws deploy get-deployment --deployment-id $DEPLOYMENT_ID
