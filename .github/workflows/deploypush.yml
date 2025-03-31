@@ -40,7 +40,7 @@ jobs:
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+        aws-region: ${{ env.AWS_REGION }}
     
     - name: Login to Amazon ECR
       id: login-ecr
@@ -58,19 +58,33 @@ jobs:
         docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
-
+        echo "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" > image.txt
+    
+    - name: Upload image name as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: image-artifact
+        path: image.txt
+  
   register-task-definition:
     name: Register Task Definition
     runs-on: ubuntu-latest
     needs: build-and-push
     steps:
+    - name: Download image artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: image-artifact
+    
+    - name: Read image name
+      run: echo "IMAGE=$(cat image.txt)" >> $GITHUB_ENV
+    
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+        aws-region: ${{ env.AWS_REGION }}
     
     - name: Generate task definition JSON
       run: |
@@ -86,7 +100,7 @@ jobs:
           "containerDefinitions": [
             {
               "name": "${{ env.APP_ENVIRONMENT }}-frontend-container",
-              "image": "${{ env.image }}",
+              "image": "${{ env.IMAGE }}",
               "essential": true,
               "portMappings": [
                 {
@@ -103,19 +117,33 @@ jobs:
     - name: Register new task definition
       run: |
         TASK_DEFINITION_ARN=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
-        echo "task_definition_arn=$TASK_DEFINITION_ARN" >> $GITHUB_ENV
-
+        echo "$TASK_DEFINITION_ARN" > task_definition.txt
+    
+    - name: Upload task definition ARN as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: task-definition-artifact
+        path: task_definition.txt
+  
   deploy:
     name: Deploy via CodeDeploy
     runs-on: ubuntu-latest
     needs: register-task-definition
     steps:
+    - name: Download task definition artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: task-definition-artifact
+    
+    - name: Read task definition ARN
+      run: echo "TASK_DEFINITION_ARN=$(cat task_definition.txt)" >> $GITHUB_ENV
+    
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+        aws-region: ${{ env.AWS_REGION }}
     
     - name: Generate appspec.json
       run: |
@@ -127,7 +155,7 @@ jobs:
               "TargetService": {
                 "Type": "AWS::ECS::Service",
                 "Properties": {
-                  "TaskDefinition": "${{ env.task_definition_arn }}",
+                  "TaskDefinition": "${{ env.TASK_DEFINITION_ARN }}",
                   "LoadBalancerInfo": {
                     "ContainerName": "${{ env.APP_ENVIRONMENT }}-frontend-container",
                     "ContainerPort": 80
@@ -139,19 +167,13 @@ jobs:
         }
         EOF
     
-    - name: Install jq
-      run: sudo apt-get install -y jq
-    
     - name: Trigger CodeDeploy deployment
       run: |
-        APPSPEC_CONTENT=$(cat appspec.json | jq -c -r @json)
-        ESCAPED_APPSPEC_CONTENT=$(echo $APPSPEC_CONTENT | sed 's/"/\\"/g')
         DEPLOYMENT_ID=$(aws deploy create-deployment \
           --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
           --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
           --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
           --description "Deployment triggered by GitHub Actions" \
-          --revision "{\"revisionType\":\"AppSpecContent\",\"appSpecContent\":{\"content\":\"$ESCAPED_APPSPEC_CONTENT\"}}" \
+          --revision "{\"revisionType\":\"AppSpecContent\",\"appSpecContent\":{\"content\":\"$(cat appspec.json | jq -c -r @json)\"}}" \
           --query 'deploymentId' --output text)
         echo "Deployment ID: $DEPLOYMENT_ID"
-        aws deploy get-deployment --deployment-id $DEPLOYMENT_ID
