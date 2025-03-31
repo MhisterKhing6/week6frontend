@@ -182,6 +182,7 @@ jobs:
           --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
           --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
           --description "Deployment triggered by GitHub Actions" \
+          --region eu-west-1 \
           --revision "{\"revisionType\":\"AppSpecContent\",\"appSpecContent\":{\"content\":\"$ESCAPED_APPSPEC_CONTENT\"}}" \
           --query 'deploymentId' --output text)
         echo "Deployment ID: $DEPLOYMENT_ID"
