@@ -75,12 +75,14 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: image-tag
-    
+
     - name: Read image tag
       run: |
-        echo "IMAGE=$(cat image.txt)"
         echo "IMAGE=$(cat image.txt)" >> $GITHUB_ENV
-
+    
+    - name: Echo image 
+      run: echo "Image used: $image"
+      
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
