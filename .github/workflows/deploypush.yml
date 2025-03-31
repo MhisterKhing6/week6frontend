@@ -80,7 +80,7 @@ jobs:
       run: echo "IMAGE=$(cat image.txt)" >> $GITHUB_ENV
     
     - name: Echo image 
-      run: echo "Image used $image"
+      run: echo "Image used $IMAGE"
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
