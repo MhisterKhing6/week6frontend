@@ -11,7 +11,7 @@ env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   ECS_CLUSTER: weekfiveproject-Cluster
   ECS_SERVICE: ${{ secrets.AWS_SERVICE }}
-  ECS_TASK_FAMILY: wweekfiveproject-frontend-task
+  ECS_TASK_FAMILY: weekfiveproject-frontend-task
   CODEDEPLOY_APPLICATION: weekfiveproject-frontend-app
   CODEDEPLOY_DEPLOYMENT_GROUP: weekfiveproject-frontend-dg
 
@@ -23,15 +23,17 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
     
-    - name: Set up JDK 21
-      uses: actions/setup-java@v3
+    - name: Set up Node.js 22
+      uses: actions/setup-node@v3
       with:
-        java-version: '21'
-        distribution: 'temurin'
-        cache: maven
+        node-version: '22'
+        cache: 'npm'
     
-    - name: Build with Maven
-      run: mvn -B package --file pom.xml
+    - name: Install dependencies
+      run: npm install
+    
+    - name: Build React App
+      run: npm run build
     
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -129,7 +131,7 @@ jobs:
     - name: Trigger CodeDeploy deployment
       run: |
         APPSPEC_CONTENT=$(cat appspec.json | jq -c -r @json)
-        ESCAPED_APPSPEC_CONTENT=$(echo $APPSPEC_CONTENT | sed 's/"/\"/g')
+        ESCAPED_APPSPEC_CONTENT=$(echo $APPSPEC_CONTENT | sed 's/"/\\"/g')
         DEPLOYMENT_ID=$(aws deploy create-deployment \
           --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
           --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
