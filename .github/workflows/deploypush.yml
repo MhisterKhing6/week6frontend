@@ -40,7 +40,7 @@ jobs:
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+        aws-region: ${{ secrets.AWS_REGION }}
     
     - name: Login to Amazon ECR
       id: login-ecr
@@ -65,6 +65,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+    
     - name: Generate task definition JSON
       run: |
         cat <<EOF > task-definition.json
@@ -95,7 +102,7 @@ jobs:
     
     - name: Register new task definition
       run: |
-        TASK_DEFINITION_ARN=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --region eu-west-1 --query 'taskDefinition.taskDefinitionArn' --output text)
+        TASK_DEFINITION_ARN=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
         echo "task_definition_arn=$TASK_DEFINITION_ARN" >> $GITHUB_ENV
 
   deploy:
@@ -103,6 +110,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: register-task-definition
     steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+    
     - name: Generate appspec.json
       run: |
         cat <<EOF > appspec.json
@@ -138,7 +152,6 @@ jobs:
           --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
           --description "Deployment triggered by GitHub Actions" \
           --revision "{\"revisionType\":\"AppSpecContent\",\"appSpecContent\":{\"content\":\"$ESCAPED_APPSPEC_CONTENT\"}}" \
-          --region eu-west-1 \
           --query 'deploymentId' --output text)
         echo "Deployment ID: $DEPLOYMENT_ID"
-        aws deploy get-deployment --deployment-id $DEPLOYMENT_ID --region eu-west-1
+        aws deploy get-deployment --deployment-id $DEPLOYMENT_ID
