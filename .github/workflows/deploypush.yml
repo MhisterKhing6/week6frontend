@@ -40,7 +40,7 @@ jobs:
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+        aws-region: us-east-1
     
     - name: Login to Amazon ECR
       id: login-ecr
@@ -58,25 +58,25 @@ jobs:
         docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-        echo "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" > image.txt
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" > image.txt
     
-    - name: Upload image name as artifact
+    - name: Save image tag
       uses: actions/upload-artifact@v3
       with:
-        name: image-artifact
+        name: image-tag
         path: image.txt
-  
+
   register-task-definition:
     name: Register Task Definition
     runs-on: ubuntu-latest
     needs: build-and-push
     steps:
-    - name: Download image artifact
+    - name: Download image tag
       uses: actions/download-artifact@v3
       with:
-        name: image-artifact
+        name: image-tag
     
-    - name: Read image name
+    - name: Read image tag
       run: echo "IMAGE=$(cat image.txt)" >> $GITHUB_ENV
     
     - name: Configure AWS credentials
@@ -84,7 +84,7 @@ jobs:
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+        aws-region: us-east-1
     
     - name: Generate task definition JSON
       run: |
@@ -117,33 +117,33 @@ jobs:
     - name: Register new task definition
       run: |
         TASK_DEFINITION_ARN=$(aws ecs register-task-definition --cli-input-json file://task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)
-        echo "$TASK_DEFINITION_ARN" > task_definition.txt
+        echo "task_definition_arn=$TASK_DEFINITION_ARN" > task-definition-arn.txt
     
-    - name: Upload task definition ARN as artifact
+    - name: Save task definition ARN
       uses: actions/upload-artifact@v3
       with:
-        name: task-definition-artifact
-        path: task_definition.txt
-  
+        name: task-definition-arn
+        path: task-definition-arn.txt
+
   deploy:
     name: Deploy via CodeDeploy
     runs-on: ubuntu-latest
     needs: register-task-definition
     steps:
-    - name: Download task definition artifact
+    - name: Download task definition ARN
       uses: actions/download-artifact@v3
       with:
-        name: task-definition-artifact
+        name: task-definition-arn
     
     - name: Read task definition ARN
-      run: echo "TASK_DEFINITION_ARN=$(cat task_definition.txt)" >> $GITHUB_ENV
+      run: echo "TASK_DEFINITION_ARN=$(cat task-definition-arn.txt)" >> $GITHUB_ENV
     
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+        aws-region: us-east-1
     
     - name: Generate appspec.json
       run: |
@@ -167,13 +167,19 @@ jobs:
         }
         EOF
     
+    - name: Install jq
+      run: sudo apt-get install -y jq
+    
     - name: Trigger CodeDeploy deployment
       run: |
+        APPSPEC_CONTENT=$(cat appspec.json | jq -c -r @json)
+        ESCAPED_APPSPEC_CONTENT=$(echo $APPSPEC_CONTENT | sed 's/"/\\"/g')
         DEPLOYMENT_ID=$(aws deploy create-deployment \
           --application-name ${{ env.CODEDEPLOY_APPLICATION }} \
           --deployment-group-name ${{ env.CODEDEPLOY_DEPLOYMENT_GROUP }} \
           --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
           --description "Deployment triggered by GitHub Actions" \
-          --revision "{\"revisionType\":\"AppSpecContent\",\"appSpecContent\":{\"content\":\"$(cat appspec.json | jq -c -r @json)\"}}" \
+          --revision "{\"revisionType\":\"AppSpecContent\",\"appSpecContent\":{\"content\":\"$ESCAPED_APPSPEC_CONTENT\"}}" \
           --query 'deploymentId' --output text)
         echo "Deployment ID: $DEPLOYMENT_ID"
+        aws deploy get-deployment --deployment-id $DEPLOYMENT_ID
