@@ -5,7 +5,7 @@ class Config {
     static currentLoadedPage = 1;
 
     // Static property for baseUrl with a default value
-    static baseUrl = 'http://weekfiveproject-backend-alb-776377938.eu-west-1.elb.amazonaws.com';  // Default value for baseUrl
+    static baseUrl = 'http://weekfiveproject-backend-alb-1555297886.eu-west-1.elb.amazonaws.com';  // Default value for baseUrl
 
     // Static setter for continuationToken
     static setContinuationToken(token) {
